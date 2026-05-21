@@ -9,15 +9,24 @@ import dev.recaf.mcp.util.JsonUtil;
 import org.slf4j.Logger;
 import software.coley.recaf.analytics.logging.Logging;
 import software.coley.recaf.services.assembler.AssemblerPipelineManager;
+import software.coley.recaf.services.attach.AttachManager;
 import software.coley.recaf.services.callgraph.CallGraphService;
 import software.coley.recaf.services.compile.JavacCompiler;
 import software.coley.recaf.services.decompile.DecompilerManager;
 import software.coley.recaf.services.inheritance.InheritanceGraphService;
 import software.coley.recaf.services.mapping.MappingApplierService;
+import software.coley.recaf.services.mapping.gen.MappingGenerator;
+import software.coley.recaf.services.mapping.matching.SimilarityMappingService;
 import software.coley.recaf.services.mapping.format.MappingFormatManager;
 import software.coley.recaf.services.mapping.aggregate.AggregateMappingManager;
+import software.coley.recaf.services.phantom.PhantomGenerator;
+import software.coley.recaf.services.script.ScriptEngine;
 import software.coley.recaf.services.search.SearchService;
+import software.coley.recaf.services.search.SimilaritySearchService;
+import software.coley.recaf.services.search.match.NumberPredicateProvider;
 import software.coley.recaf.services.search.match.StringPredicateProvider;
+import software.coley.recaf.services.transform.TransformationApplierService;
+import software.coley.recaf.services.transform.TransformationManager;
 import software.coley.recaf.services.workspace.WorkspaceManager;
 import software.coley.recaf.services.workspace.io.ResourceImporter;
 import software.coley.recaf.services.workspace.patch.PatchApplier;
@@ -46,11 +55,20 @@ public class BridgeServer {
 	private final DecompilerManager decompilerManager;
 	private final SearchService searchService;
 	private final StringPredicateProvider stringPredicateProvider;
+	private final NumberPredicateProvider numberPredicateProvider;
+	private final SimilaritySearchService similaritySearchService;
 	private final CallGraphService callGraphService;
 	private final InheritanceGraphService inheritanceGraphService;
 	private final MappingApplierService mappingApplierService;
+	private final MappingGenerator mappingGenerator;
+	private final SimilarityMappingService similarityMappingService;
 	private final MappingFormatManager mappingFormatManager;
 	private final AggregateMappingManager aggregateMappingManager;
+	private final TransformationManager transformationManager;
+	private final TransformationApplierService transformationApplierService;
+	private final PhantomGenerator phantomGenerator;
+	private final ScriptEngine scriptEngine;
+	private final AttachManager attachManager;
 	private final AssemblerPipelineManager assemblerPipelineManager;
 	private final JavacCompiler javacCompiler;
 	private final PatchProvider patchProvider;
@@ -64,20 +82,29 @@ public class BridgeServer {
 						DecompilerManager decompilerManager,
 						SearchService searchService,
 						StringPredicateProvider stringPredicateProvider,
+						NumberPredicateProvider numberPredicateProvider,
+						SimilaritySearchService similaritySearchService,
 						CallGraphService callGraphService,
 						InheritanceGraphService inheritanceGraphService,
 						MappingApplierService mappingApplierService,
+						MappingGenerator mappingGenerator,
+						SimilarityMappingService similarityMappingService,
 						MappingFormatManager mappingFormatManager,
 						AggregateMappingManager aggregateMappingManager,
+						TransformationManager transformationManager,
+						TransformationApplierService transformationApplierService,
+						PhantomGenerator phantomGenerator,
+						ScriptEngine scriptEngine,
+						AttachManager attachManager,
 						AssemblerPipelineManager assemblerPipelineManager,
 						JavacCompiler javacCompiler,
 						PatchProvider patchProvider,
 						PatchApplier patchApplier) {
 		this(DEFAULT_PORT, workspaceManager, resourceImporter, decompilerManager,
-				searchService, stringPredicateProvider, callGraphService,
-				inheritanceGraphService, mappingApplierService, mappingFormatManager,
-				aggregateMappingManager, assemblerPipelineManager, javacCompiler,
-				patchProvider, patchApplier);
+				searchService, stringPredicateProvider, numberPredicateProvider, similaritySearchService, callGraphService,
+				inheritanceGraphService, mappingApplierService, mappingGenerator, similarityMappingService,
+				mappingFormatManager, aggregateMappingManager, transformationManager, transformationApplierService,
+				phantomGenerator, scriptEngine, attachManager, assemblerPipelineManager, javacCompiler, patchProvider, patchApplier);
 	}
 
 	public BridgeServer(int port,
@@ -86,11 +113,20 @@ public class BridgeServer {
 						DecompilerManager decompilerManager,
 						SearchService searchService,
 						StringPredicateProvider stringPredicateProvider,
+						NumberPredicateProvider numberPredicateProvider,
+						SimilaritySearchService similaritySearchService,
 						CallGraphService callGraphService,
 						InheritanceGraphService inheritanceGraphService,
 						MappingApplierService mappingApplierService,
+						MappingGenerator mappingGenerator,
+						SimilarityMappingService similarityMappingService,
 						MappingFormatManager mappingFormatManager,
 						AggregateMappingManager aggregateMappingManager,
+						TransformationManager transformationManager,
+						TransformationApplierService transformationApplierService,
+						PhantomGenerator phantomGenerator,
+						ScriptEngine scriptEngine,
+						AttachManager attachManager,
 						AssemblerPipelineManager assemblerPipelineManager,
 						JavacCompiler javacCompiler,
 						PatchProvider patchProvider,
@@ -101,11 +137,20 @@ public class BridgeServer {
 		this.decompilerManager = decompilerManager;
 		this.searchService = searchService;
 		this.stringPredicateProvider = stringPredicateProvider;
+		this.numberPredicateProvider = numberPredicateProvider;
+		this.similaritySearchService = similaritySearchService;
 		this.callGraphService = callGraphService;
 		this.inheritanceGraphService = inheritanceGraphService;
 		this.mappingApplierService = mappingApplierService;
+		this.mappingGenerator = mappingGenerator;
+		this.similarityMappingService = similarityMappingService;
 		this.mappingFormatManager = mappingFormatManager;
 		this.aggregateMappingManager = aggregateMappingManager;
+		this.transformationManager = transformationManager;
+		this.transformationApplierService = transformationApplierService;
+		this.phantomGenerator = phantomGenerator;
+		this.scriptEngine = scriptEngine;
+		this.attachManager = attachManager;
 		this.assemblerPipelineManager = assemblerPipelineManager;
 		this.javacCompiler = javacCompiler;
 		this.patchProvider = patchProvider;
@@ -136,7 +181,7 @@ public class BridgeServer {
 		server.createContext("/decompile", wrapHandler(decompHandler::handle));
 
 		// Search endpoints
-		SearchHandler searchHandler = new SearchHandler(workspaceManager, searchService, stringPredicateProvider);
+		SearchHandler searchHandler = new SearchHandler(workspaceManager, searchService, similaritySearchService, stringPredicateProvider, numberPredicateProvider);
 		server.createContext("/search", wrapHandler(searchHandler::handle));
 
 		// Analysis endpoints
@@ -146,9 +191,12 @@ public class BridgeServer {
 
 		// Mapping endpoints
 		MappingHandler mappingHandler = new MappingHandler(workspaceManager, mappingApplierService,
-				mappingFormatManager, aggregateMappingManager);
+				mappingGenerator, similarityMappingService, inheritanceGraphService,
+				mappingFormatManager, aggregateMappingManager, workspaceRegistry);
 		server.createContext("/mapping/rename", wrapHandler(mappingHandler::handleRename));
+		server.createContext("/mapping/batch-rename", wrapHandler(mappingHandler::handleBatchRename));
 		server.createContext("/mapping/export", wrapHandler(mappingHandler::handleExport));
+		server.createContext("/mapping/generate", wrapHandler(mappingHandler::handleGenerateMappings));
 
 		// Bytecode editing endpoints
 		BytecodeHandler bytecodeHandler = new BytecodeHandler(workspaceManager);
@@ -188,6 +236,29 @@ public class BridgeServer {
 
 		// Method bytecode instructions endpoint
 		server.createContext("/bytecode/instructions", wrapHandler(bytecodeHandler::handleMethodBytecode));
+
+		// Deobfuscation endpoints
+		DeobfuscationHandler deobfHandler = new DeobfuscationHandler(workspaceManager, transformationManager, transformationApplierService);
+		server.createContext("/deobf/eval-method", wrapHandler(deobfHandler::handleEvalMethod));
+		server.createContext("/deobf/simplify-method", wrapHandler(deobfHandler::handleSimplifyMethod));
+		server.createContext("/deobf/transformers", wrapHandler(deobfHandler::handleListTransformers));
+		server.createContext("/deobf/detect-antidecompile", wrapHandler(deobfHandler::handleDetectAntiDecompile));
+
+		ScriptHandler scriptHandler = new ScriptHandler(scriptEngine);
+		server.createContext("/script/compile", wrapHandler(scriptHandler::handleCompile));
+		server.createContext("/script/run", wrapHandler(scriptHandler::handleRun));
+		server.createContext("/script/cancel", wrapHandler(scriptHandler::handleCancel));
+		server.createContext("/script/result", wrapHandler(scriptHandler::handleResult));
+
+		AttachHandler attachHandler = new AttachHandler(workspaceManager, attachManager);
+		server.createContext("/attach/list-vms", wrapHandler(attachHandler::handleListVms));
+		server.createContext("/attach/attach-vm", wrapHandler(attachHandler::handleAttachVm));
+		server.createContext("/attach/mbeans", wrapHandler(attachHandler::handleMbeans));
+
+		WorkspaceOpsHandler workspaceOpsHandler = new WorkspaceOpsHandler(workspaceManager, resourceImporter, phantomGenerator);
+		server.createContext("/workspace/support-resource", wrapHandler(workspaceOpsHandler::handleAttachSupportResource));
+		server.createContext("/workspace/list-support-resources", wrapHandler(workspaceOpsHandler::handleListSupportResources));
+		server.createContext("/workspace/generate-phantoms", wrapHandler(workspaceOpsHandler::handleGeneratePhantoms));
 
 		server.start();
 		logger.info("MCP Bridge Server started on port {}", port);

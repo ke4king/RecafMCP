@@ -2,6 +2,7 @@ package dev.recaf.mcp.util;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -43,6 +44,27 @@ public final class JsonUtil {
 			return obj.get(key).getAsInt();
 		}
 		return defaultValue;
+	}
+
+	public static long getLong(JsonObject obj, String key, long defaultValue) {
+		if (obj.has(key) && !obj.get(key).isJsonNull()) {
+			return obj.get(key).getAsLong();
+		}
+		return defaultValue;
+	}
+
+	public static boolean getBoolean(JsonObject obj, String key, boolean defaultValue) {
+		if (obj.has(key) && !obj.get(key).isJsonNull()) {
+			return obj.get(key).getAsBoolean();
+		}
+		return defaultValue;
+	}
+
+	public static JsonArray getArray(JsonObject obj, String key) {
+		if (obj.has(key) && obj.get(key).isJsonArray()) {
+			return obj.getAsJsonArray(key);
+		}
+		return new JsonArray();
 	}
 
 	/**

@@ -12,12 +12,21 @@ import software.coley.recaf.services.callgraph.CallGraphService;
 import software.coley.recaf.services.decompile.DecompilerManager;
 import software.coley.recaf.services.inheritance.InheritanceGraphService;
 import software.coley.recaf.services.mapping.MappingApplierService;
+import software.coley.recaf.services.mapping.gen.MappingGenerator;
+import software.coley.recaf.services.mapping.matching.SimilarityMappingService;
 import software.coley.recaf.services.assembler.AssemblerPipelineManager;
+import software.coley.recaf.services.attach.AttachManager;
 import software.coley.recaf.services.compile.JavacCompiler;
 import software.coley.recaf.services.mapping.aggregate.AggregateMappingManager;
 import software.coley.recaf.services.mapping.format.MappingFormatManager;
+import software.coley.recaf.services.phantom.PhantomGenerator;
+import software.coley.recaf.services.script.ScriptEngine;
 import software.coley.recaf.services.search.SearchService;
+import software.coley.recaf.services.search.SimilaritySearchService;
+import software.coley.recaf.services.search.match.NumberPredicateProvider;
 import software.coley.recaf.services.search.match.StringPredicateProvider;
+import software.coley.recaf.services.transform.TransformationApplierService;
+import software.coley.recaf.services.transform.TransformationManager;
 import software.coley.recaf.services.workspace.WorkspaceManager;
 import software.coley.recaf.services.workspace.io.ResourceImporter;
 import software.coley.recaf.services.workspace.patch.PatchApplier;
@@ -28,7 +37,7 @@ import software.coley.recaf.services.workspace.patch.PatchProvider;
  * so that an external MCP Server process can relay AI tool calls to Recaf.
  */
 @Dependent
-@PluginInformation(id = "dev.recaf.mcp.recaf-mcp-plugin", version = "1.2.0", name = "Recaf MCP Plugin", description = "MCP bridge plugin that exposes Recaf services to AI assistants via the Model Context Protocol")
+@PluginInformation(id = "dev.recaf.mcp.recaf-mcp-plugin", version = "1.3.0", name = "Recaf MCP Plugin", description = "MCP bridge plugin that exposes Recaf services to AI assistants via the Model Context Protocol")
 public class RecafMcpPlugin implements Plugin {
 	private static final Logger logger = Logging.get(RecafMcpPlugin.class);
 
@@ -40,21 +49,31 @@ public class RecafMcpPlugin implements Plugin {
 						  DecompilerManager decompilerManager,
 						  SearchService searchService,
 						  StringPredicateProvider stringPredicateProvider,
+						  NumberPredicateProvider numberPredicateProvider,
+						  SimilaritySearchService similaritySearchService,
 						  CallGraphService callGraphService,
 						  InheritanceGraphService inheritanceGraphService,
 						  MappingApplierService mappingApplierService,
+						  MappingGenerator mappingGenerator,
+						  SimilarityMappingService similarityMappingService,
 						  MappingFormatManager mappingFormatManager,
 						  AggregateMappingManager aggregateMappingManager,
+						  TransformationManager transformationManager,
+						  TransformationApplierService transformationApplierService,
+						  PhantomGenerator phantomGenerator,
+						  ScriptEngine scriptEngine,
+						  AttachManager attachManager,
 						  AssemblerPipelineManager assemblerPipelineManager,
 						  JavacCompiler javacCompiler,
 						  PatchProvider patchProvider,
 						  PatchApplier patchApplier) {
 		this.bridgeServer = new BridgeServer(
 				workspaceManager, resourceImporter, decompilerManager,
-				searchService, stringPredicateProvider, callGraphService,
-				inheritanceGraphService, mappingApplierService, mappingFormatManager,
-				aggregateMappingManager, assemblerPipelineManager, javacCompiler,
-				patchProvider, patchApplier
+				searchService, stringPredicateProvider, numberPredicateProvider, similaritySearchService,
+				callGraphService, inheritanceGraphService, mappingApplierService, mappingGenerator,
+				similarityMappingService, mappingFormatManager, aggregateMappingManager,
+				transformationManager, transformationApplierService, phantomGenerator,
+				scriptEngine, attachManager, assemblerPipelineManager, javacCompiler, patchProvider, patchApplier
 		);
 	}
 

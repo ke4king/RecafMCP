@@ -1,12 +1,12 @@
 # Recaf MCP 插件
 
-[![Version](https://img.shields.io/badge/version-1.2.0-brightgreen.svg)]()
+[![Version](https://img.shields.io/badge/version-1.3.0-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![JDK 22+](https://img.shields.io/badge/JDK-22%2B-orange.svg)](https://openjdk.org/)
 [![MCP Protocol](https://img.shields.io/badge/MCP-2024--11--05-green.svg)](https://modelcontextprotocol.io/)
-[![Tools](https://img.shields.io/badge/MCP_Tools-25-purple.svg)]()
+[![Tools](https://img.shields.io/badge/MCP_Tools-28-purple.svg)]()
 
-让 AI 助手通过 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) 操控 [Recaf 4.x](https://github.com/Col-E/Recaf)，直接在 AI 工作流中完成 Java 字节码的反编译、搜索、分析、字节码编辑、Java 编译、JASM 汇编/反汇编、类对比、Patch 管理和导出。
+让 AI 助手通过 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) 操控 [Recaf 4.x](https://github.com/Col-E/Recaf)，直接在 AI 工作流中完成 Java 字节码的反编译、搜索、分析、字节码编辑、Java 编译、JASM 汇编/反汇编、类对比、Patch 管理、反混淆和导出。
 
 [English](README.md)
 
@@ -31,7 +31,7 @@
 
 之所以需要这种分离设计，是因为 Recaf 作为 JavaFX 桌面应用有自己的模块系统，而 MCP 协议要求 AI 客户端能通过 STDIO 启动和管理一个独立进程。
 
-## MCP 工具列表（25 个）
+## MCP 工具列表（28 个）
 
 ### 工作区管理
 
@@ -72,6 +72,7 @@
 | 工具 | 说明 | 主要参数 |
 |------|------|----------|
 | `rename_symbol` | 重命名类/字段/方法（自动更新所有引用） | `type`、`oldName`、`newName`、`className` |
+| `batch_rename` | 批量重命名类/字段/方法，一次原子操作完成 | `mappings` — `{type, oldName, newName, className?, descriptor?}` 数组 |
 | `edit_bytecode` | 添加/删除/修改方法和字段 | `className`、`operation` + 操作相关参数 |
 | `patch` | 创建或应用工作区变更补丁 | `action`（create/apply）、`patchJson` |
 
@@ -82,6 +83,13 @@
 | `export_mappings` | 导出重命名映射到文件 | `format`、`outputPath` |
 | `export_jar` | 导出工作区为 JAR 文件 | `outputPath` |
 | `export_source` | 导出反编译源码到目录 | `outputDir`、`className`（可选） |
+
+### 反混淆
+
+| 工具 | 说明 | 主要参数 |
+|------|------|----------|
+| `eval_method` | 在沙箱 ClassLoader 中执行静态方法（如字符串解密函数） | `className`、`methodName`、`methodDesc`、`arguments`（可选）、`timeout`（可选） |
+| `simplify_method` | 多轮字节码简化：常量折叠、死分支消除、goto 链合并、NOP 清理、不可达代码移除 | `className`、`methodName`、`methodDesc`、`passes`（可选） |
 
 ## MCP 资源
 
@@ -107,8 +115,8 @@ cd recaf-mcp-plugin
 
 | 文件 | 用途 |
 |------|------|
-| `build/libs/recaf-mcp-plugin-1.2.0.jar` | Recaf 插件（加载到 Recaf 内部，运行 Bridge Server） |
-| `build/mcp/recaf-mcp-server-1.2.0.jar` | MCP Server（独立 fat JAR，由 AI 客户端启动） |
+| `build/libs/recaf-mcp-plugin-1.3.0.jar` | Recaf 插件（加载到 Recaf 内部，运行 Bridge Server） |
+| `build/mcp/recaf-mcp-server-1.3.0.jar` | MCP Server（独立 fat JAR，由 AI 客户端启动） |
 
 ## 安装与使用
 
@@ -124,7 +132,7 @@ cd recaf-mcp-plugin
 
 **方式 B：手动安装**
 
-将 `build/libs/recaf-mcp-plugin-1.2.0.jar` 复制到 Recaf 的插件目录：
+将 `build/libs/recaf-mcp-plugin-1.3.0.jar` 复制到 Recaf 的插件目录：
 
 | 操作系统 | 插件目录 |
 |---------|---------|
@@ -153,7 +161,7 @@ cd recaf-mcp-plugin
   "mcpServers": {
     "recaf": {
       "command": "java",
-      "args": ["-jar", "/你的绝对路径/build/mcp/recaf-mcp-server-1.2.0.jar"]
+      "args": ["-jar", "/你的绝对路径/build/mcp/recaf-mcp-server-1.3.0.jar"]
     }
   }
 }
@@ -170,7 +178,7 @@ cd recaf-mcp-plugin
   "mcpServers": {
     "recaf": {
       "command": "java",
-      "args": ["-jar", "/你的绝对路径/build/mcp/recaf-mcp-server-1.2.0.jar"]
+      "args": ["-jar", "/你的绝对路径/build/mcp/recaf-mcp-server-1.3.0.jar"]
     }
   }
 }
@@ -249,6 +257,19 @@ Recaf 和 AI 客户端都启动后，直接用自然语言交互：
 8. "导出修改后的 JAR 到 /tmp/patched.jar"
 ```
 
+### 反混淆工作流
+
+```
+1. "打开 /path/to/obfuscated.jar"
+2. "反编译 com/a/b/c" — 找到加密字符串和解密方法签名
+3. "eval_method com/a/b/Decryptor decrypt (Ljava/lang/String;)Ljava/lang/String; 参数 [{type:'string', value:'encrypted_data'}]"
+   — 直接调用解密函数，获取明文结果
+4. "simplify_method com/a/b/c main (Ljava/lang/String;)V" — 移除不透明谓词和死分支
+5. "反编译 com/a/b/c" — 验证简化后的代码更清晰
+6. "批量重命名反混淆后的符号"
+7. "导出清理后的 JAR 到 /tmp/deobfuscated.jar"
+```
+
 ## 项目结构
 
 ```
@@ -269,8 +290,9 @@ src/main/java/dev/recaf/mcp/
 │       ├── CompileHandler.java          # /compile — 编译 Java 源码并应用到工作区
 │       ├── AssemblerHandler.java        # /disassemble, /assemble — JASM 反汇编与汇编
 │       └── PatchHandler.java            # /patch — 创建与应用工作区补丁
+│       └── DeobfuscationHandler.java    # /deobf/* — 执行方法（字符串解密）与字节码简化
 ├── server/
-│   ├── RecafMcpServer.java              # MCP Server — STDIO JSON-RPC，25 个工具分发
+│   ├── RecafMcpServer.java              # MCP Server — STDIO JSON-RPC，28 个工具分发
 │   └── BridgeClient.java               # HTTP 客户端 — 将 MCP 工具调用转发到 Bridge Server
 └── util/
     ├── JsonUtil.java                    # JSON 响应工具类
@@ -300,6 +322,7 @@ src/main/java/dev/recaf/mcp/
 | `POST /analysis/call-graph` | 调用图：`{"className": "...", "methodName": "...", "depth": 3}` |
 | `POST /analysis/inheritance` | 继承关系：`{"className": "...", "direction": "both"}` |
 | `POST /mapping/rename` | 重命名：`{"type": "class", "oldName": "...", "newName": "..."}` |
+| `POST /mapping/batch-rename` | 批量重命名：`{"mappings": [{"type": "class", "oldName": "...", "newName": "..."}, ...]}` |
 | `POST /mapping/export` | 导出映射：`{"format": "TinyV1", "outputPath": "/path"}` |
 | `POST /bytecode/edit-method` | 编辑方法：`{"className": "...", "methodName": "...", "methodDesc": "...", "accessFlags": 1}` |
 | `POST /bytecode/edit-field` | 编辑字段：`{"className": "...", "fieldName": "...", "accessFlags": 2}` |
@@ -315,6 +338,8 @@ src/main/java/dev/recaf/mcp/
 | `POST /disassemble/method` | 反汇编方法：`{"className": "...", "methodName": "...", "methodDesc": "...", "maxChars": 120000}` |
 | `POST /assemble` | 汇编 JASM：`{"className": "com/example/Main", "source": "..."}` |
 | `POST /patch` | Patch：`{"action": "create"}` 或 `{"action": "apply", "patchJson": "..."}` |
+| `POST /deobf/eval-method` | 执行方法：`{"className": "...", "methodName": "...", "methodDesc": "...", "arguments": [...], "timeout": 5000}` |
+| `POST /deobf/simplify-method` | 简化方法：`{"className": "...", "methodName": "...", "methodDesc": "...", "passes": 3}` |
 
 ## 技术细节
 
@@ -328,7 +353,7 @@ src/main/java/dev/recaf/mcp/
 | 类列表默认限制 | 500（支持 offset 分页） |
 | Java 工具链 | JDK 22+ |
 | 构建系统 | Gradle + Shadow 插件（fat JAR 打包） |
-| MCP 工具总数 | 25 |
+| MCP 工具总数 | 28 |
 
 ## 常见问题
 
@@ -347,7 +372,7 @@ src/main/java/dev/recaf/mcp/
 
 **结构化错误响应**
 - 所有错误包含 `code`、`message` 和 `suggestion` 字段。
-- 常见错误码：`NO_WORKSPACE`、`CLASS_NOT_FOUND`、`MEMBER_NOT_FOUND`、`INVALID_PARAMS`、`DECOMPILE_TIMEOUT`、`COMPILE_FAILED`、`ASSEMBLER_FAILED`、`PATCH_FAILED`。
+- 常见错误码：`NO_WORKSPACE`、`CLASS_NOT_FOUND`、`MEMBER_NOT_FOUND`、`INVALID_PARAMS`、`DECOMPILE_TIMEOUT`、`COMPILE_FAILED`、`ASSEMBLER_FAILED`、`PATCH_FAILED`、`EVAL_FAILED`、`EVAL_TIMEOUT`、`SIMPLIFY_FAILED`。
 
 **构建失败**
 - 确保已安装 JDK 22+。运行 `./gradlew -q javaToolchains` 查看已检测到的 JDK。
@@ -355,8 +380,18 @@ src/main/java/dev/recaf/mcp/
 
 ## 更新日志
 
+### v1.3.0
+
+- **字符串解密** — `eval_method` 在沙箱 ClassLoader 中执行静态方法，可直接调用混淆器的字符串解密函数获取明文
+- **字节码简化** — `simplify_method` 执行多轮字节码变换：常量折叠、死分支消除、goto 链合并、NOP 清理、不可达代码移除
+- **新增错误码** — `EVAL_FAILED`、`EVAL_TIMEOUT`、`SIMPLIFY_FAILED`
+- **反混淆处理器** — 新增 `DeobfuscationHandler`，包含沙箱 `WorkspaceClassLoader`（parent = PlatformClassLoader 实现隔离）
+- **COMPUTE_FRAMES 回退** — simplify_method 在 `COMPUTE_FRAMES` 对异常字节码失败时自动回退到 `COMPUTE_MAXS`
+- 工具数量：26 → 28
+
 ### v1.2.0
 
+- **批量重命名** — `batch_rename` 在一次原子操作中应用多个类/字段/方法重命名，非常适合反混淆工作流
 - **Java 编译** — `compile_java` 通过 Recaf 的 JavacCompiler 编译 Java 源码并应用到工作区
 - **JASM 汇编/反汇编** — `disassemble_class` 和 `assemble_class` 支持完整类的 JASM 往返；`method_disassemble` 支持单个方法反汇编
 - **方法字节码查看** — `method_bytecode` 通过 ASM tree API 展示详细字节码指令（操作码、操作数、try-catch 块、局部变量）
@@ -366,7 +401,7 @@ src/main/java/dev/recaf/mcp/
 - **Patch 系统** — `patch` 工具创建和应用工作区变更补丁（可序列化 JSON 格式）
 - **新增错误码** — `COMPILE_FAILED`、`COMPILER_UNAVAILABLE`、`PATCH_FAILED`
 - **4 个新 Recaf 服务注入** — AssemblerPipelineManager、JavacCompiler、PatchProvider、PatchApplier
-- 工具数量：16 → 25
+- 工具数量：16 → 26
 
 ### v1.1.0
 

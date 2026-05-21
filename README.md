@@ -1,12 +1,12 @@
 # Recaf MCP Plugin
 
-[![Version](https://img.shields.io/badge/version-1.2.0-brightgreen.svg)]()
+[![Version](https://img.shields.io/badge/version-1.3.0-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![JDK 22+](https://img.shields.io/badge/JDK-22%2B-orange.svg)](https://openjdk.org/)
 [![MCP Protocol](https://img.shields.io/badge/MCP-2024--11--05-green.svg)](https://modelcontextprotocol.io/)
-[![Tools](https://img.shields.io/badge/MCP_Tools-25-purple.svg)]()
+[![Tools](https://img.shields.io/badge/MCP_Tools-28-purple.svg)]()
 
-Enable AI assistants to control [Recaf 4.x](https://github.com/Col-E/Recaf) through the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) — decompile, search, analyze, edit bytecode, compile Java, assemble/disassemble JASM, diff classes, patch workspaces, and export Java bytecode directly from your AI workflow.
+Enable AI assistants to control [Recaf 4.x](https://github.com/Col-E/Recaf) through the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) — decompile, search, analyze, edit bytecode, compile Java, assemble/disassemble JASM, diff classes, patch workspaces, deobfuscate, and export Java bytecode directly from your AI workflow.
 
 [中文文档](README_CN.md)
 
@@ -31,7 +31,7 @@ The plugin uses a dual-process architecture to bridge AI assistants with Recaf's
 
 This separation is necessary because Recaf runs as a JavaFX desktop application with its own module system, while MCP requires a STDIO-based process that the AI client can spawn and manage.
 
-## Available MCP Tools (25)
+## Available MCP Tools (28)
 
 ### Workspace Management
 
@@ -72,6 +72,7 @@ This separation is necessary because Recaf runs as a JavaFX desktop application 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
 | `rename_symbol` | Rename class/field/method (updates all refs) | `type`, `oldName`, `newName`, `className` |
+| `batch_rename` | Batch rename classes/fields/methods in one atomic operation | `mappings` — array of `{type, oldName, newName, className?, descriptor?}` |
 | `edit_bytecode` | Add/remove/modify methods and fields | `className`, `operation`, + operation-specific params |
 | `patch` | Create or apply workspace change patches | `action` (create/apply), `patchJson` |
 
@@ -82,6 +83,13 @@ This separation is necessary because Recaf runs as a JavaFX desktop application 
 | `export_mappings` | Export rename mappings to a file | `format`, `outputPath` |
 | `export_jar` | Export workspace as a JAR file | `outputPath` |
 | `export_source` | Export decompiled source to a directory | `outputDir`, `className` (optional) |
+
+### Deobfuscation
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `eval_method` | Execute a static method in a sandboxed ClassLoader (e.g. string decryption) | `className`, `methodName`, `methodDesc`, `arguments` (optional), `timeout` (optional) |
+| `simplify_method` | Multi-pass bytecode simplification: constant folding, dead branch elimination, goto chain combining, NOP cleanup, unreachable code removal | `className`, `methodName`, `methodDesc`, `passes` (optional) |
 
 ## MCP Resources
 
@@ -107,8 +115,8 @@ This produces two JARs:
 
 | File | Purpose |
 |------|---------|
-| `build/libs/recaf-mcp-plugin-1.2.0.jar` | Recaf plugin (loads inside Recaf, runs the Bridge Server) |
-| `build/mcp/recaf-mcp-server-1.2.0.jar` | MCP Server (standalone fat JAR, launched by AI client) |
+| `build/libs/recaf-mcp-plugin-1.3.0.jar` | Recaf plugin (loads inside Recaf, runs the Bridge Server) |
+| `build/mcp/recaf-mcp-server-1.3.0.jar` | MCP Server (standalone fat JAR, launched by AI client) |
 
 ## Setup & Usage
 
@@ -124,7 +132,7 @@ This builds the plugin and launches Recaf with it auto-loaded.
 
 **Option B: Manual installation**
 
-Copy `build/libs/recaf-mcp-plugin-1.2.0.jar` to Recaf's plugin directory:
+Copy `build/libs/recaf-mcp-plugin-1.3.0.jar` to Recaf's plugin directory:
 
 | OS | Plugin Directory |
 |----|-----------------|
@@ -153,7 +161,7 @@ Add to `~/.claude.json`:
   "mcpServers": {
     "recaf": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/build/mcp/recaf-mcp-server-1.2.0.jar"]
+      "args": ["-jar", "/absolute/path/to/build/mcp/recaf-mcp-server-1.3.0.jar"]
     }
   }
 }
@@ -170,7 +178,7 @@ Add to your MCP configuration (Settings → MCP):
   "mcpServers": {
     "recaf": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/build/mcp/recaf-mcp-server-1.2.0.jar"]
+      "args": ["-jar", "/absolute/path/to/build/mcp/recaf-mcp-server-1.3.0.jar"]
     }
   }
 }
@@ -249,6 +257,19 @@ Export the modified JAR to /tmp/output.jar
 8. "Export the modified JAR to /tmp/patched.jar"
 ```
 
+### Deobfuscation Workflow
+
+```
+1. "Open /path/to/obfuscated.jar"
+2. "Decompile com/a/b/c" — find encrypted strings and decryption method signatures
+3. "eval_method com/a/b/Decryptor decrypt (Ljava/lang/String;)Ljava/lang/String; with args [{type:'string', value:'encrypted_data'}]"
+   — call the decryption function directly, get plaintext result
+4. "simplify_method com/a/b/c main (Ljava/lang/String;)V" — remove opaque predicates and dead branches
+5. "Decompile com/a/b/c" — verify the simplified code is cleaner
+6. "Batch rename the deobfuscated symbols"
+7. "Export the cleaned JAR to /tmp/deobfuscated.jar"
+```
+
 ## Project Structure
 
 ```
@@ -269,8 +290,9 @@ src/main/java/dev/recaf/mcp/
 │       ├── CompileHandler.java          # /compile — compile Java source & apply to workspace
 │       ├── AssemblerHandler.java        # /disassemble, /assemble — JASM disassembly & assembly
 │       └── PatchHandler.java            # /patch — create & apply workspace patches
+│       └── DeobfuscationHandler.java    # /deobf/* — eval method (string decryption) & bytecode simplification
 ├── server/
-│   ├── RecafMcpServer.java              # MCP Server — STDIO JSON-RPC, 25 tools dispatch
+│   ├── RecafMcpServer.java              # MCP Server — STDIO JSON-RPC, 28 tools dispatch
 │   └── BridgeClient.java               # HTTP client — forwards MCP tool calls to Bridge Server
 └── util/
     ├── JsonUtil.java                    # JSON response helpers
@@ -297,6 +319,7 @@ All endpoints accept POST with JSON body and return JSON responses.
 | `POST /analysis/call-graph` | Call graph: `{"className": "...", "methodName": "...", "depth": 3}` |
 | `POST /analysis/inheritance` | Inheritance: `{"className": "...", "direction": "both"}` |
 | `POST /mapping/rename` | Rename: `{"type": "class", "oldName": "...", "newName": "..."}` |
+| `POST /mapping/batch-rename` | Batch rename: `{"mappings": [{"type": "class", "oldName": "...", "newName": "..."}, ...]}` |
 | `POST /mapping/export` | Export mappings: `{"format": "TinyV1", "outputPath": "/path"}` |
 | `POST /bytecode/edit-method` | Edit method: `{"className": "...", "methodName": "...", "methodDesc": "...", "accessFlags": 1}` |
 | `POST /bytecode/edit-field` | Edit field: `{"className": "...", "fieldName": "...", "accessFlags": 2}` |
@@ -315,6 +338,8 @@ All endpoints accept POST with JSON body and return JSON responses.
 | `POST /disassemble/method` | Disassemble method: `{"className": "...", "methodName": "...", "methodDesc": "...", "maxChars": 120000}` |
 | `POST /assemble` | Assemble JASM: `{"className": "com/example/Main", "source": "..."}` |
 | `POST /patch` | Patch: `{"action": "create"}` or `{"action": "apply", "patchJson": "..."}` |
+| `POST /deobf/eval-method` | Eval method: `{"className": "...", "methodName": "...", "methodDesc": "...", "arguments": [...], "timeout": 5000}` |
+| `POST /deobf/simplify-method` | Simplify method: `{"className": "...", "methodName": "...", "methodDesc": "...", "passes": 3}` |
 
 ## Technical Details
 
@@ -328,7 +353,7 @@ All endpoints accept POST with JSON body and return JSON responses.
 | Default Class List Limit | 500 (with offset pagination) |
 | Java Toolchain | JDK 22+ |
 | Build System | Gradle with Shadow plugin for fat JAR |
-| Total MCP Tools | 25 |
+| Total MCP Tools | 28 |
 
 ## Troubleshooting
 
@@ -337,7 +362,7 @@ All endpoints accept POST with JSON body and return JSON responses.
 - Check Recaf's Logging panel for the startup banner.
 
 **MCP tools not appearing in AI client**
-- Verify the path to `recaf-mcp-server-1.2.0.jar` is correct and absolute.
+- Verify the path to `recaf-mcp-server-1.3.0.jar` is correct and absolute.
 - Make sure `java` points to JDK 22+: run `java -version` to check.
 - Restart your AI client after updating the MCP configuration.
 
@@ -347,7 +372,7 @@ All endpoints accept POST with JSON body and return JSON responses.
 
 **Structured error responses**
 - All errors now include `code`, `message`, and `suggestion` fields.
-- Common codes: `NO_WORKSPACE`, `CLASS_NOT_FOUND`, `MEMBER_NOT_FOUND`, `INVALID_PARAMS`, `DECOMPILE_TIMEOUT`, `COMPILE_FAILED`, `ASSEMBLER_FAILED`, `PATCH_FAILED`.
+- Common codes: `NO_WORKSPACE`, `CLASS_NOT_FOUND`, `MEMBER_NOT_FOUND`, `INVALID_PARAMS`, `DECOMPILE_TIMEOUT`, `COMPILE_FAILED`, `ASSEMBLER_FAILED`, `PATCH_FAILED`, `EVAL_FAILED`, `EVAL_TIMEOUT`, `SIMPLIFY_FAILED`.
 
 **Build fails**
 - Ensure JDK 22+ is installed. Run `./gradlew -q javaToolchains` to see detected JDKs.
@@ -355,8 +380,18 @@ All endpoints accept POST with JSON body and return JSON responses.
 
 ## Changelog
 
+### v1.3.0
+
+- **String decryption** — `eval_method` executes static methods in a sandboxed ClassLoader, enabling direct invocation of obfuscator string decryption functions to recover plaintext
+- **Bytecode simplification** — `simplify_method` performs multi-pass bytecode transforms: constant folding, dead branch elimination, goto chain combining, NOP cleanup, and unreachable code removal
+- **New error codes** — `EVAL_FAILED`, `EVAL_TIMEOUT`, `SIMPLIFY_FAILED`
+- **Deobfuscation handler** — new `DeobfuscationHandler` with sandboxed `WorkspaceClassLoader` (parent = PlatformClassLoader for isolation)
+- **COMPUTE_FRAMES fallback** — simplify_method falls back to `COMPUTE_MAXS` if `COMPUTE_FRAMES` fails on malformed bytecode
+- Tool count: 26 → 28
+
 ### v1.2.0
 
+- **Batch rename** — `batch_rename` applies multiple class/field/method renames in a single atomic operation, ideal for deobfuscation workflows
 - **Java compilation** — `compile_java` compiles Java source code via Recaf's JavacCompiler and applies the result to the workspace
 - **JASM assembly/disassembly** — `disassemble_class` and `assemble_class` for full class JASM round-trip; `method_disassemble` for single method disassembly
 - **Method bytecode viewer** — `method_bytecode` shows detailed bytecode instructions (opcodes, operands, try-catch blocks, local variables) via ASM tree API
@@ -366,7 +401,7 @@ All endpoints accept POST with JSON body and return JSON responses.
 - **Patch system** — `patch` tool creates and applies workspace change patches (serializable JSON format)
 - **New error codes** — `COMPILE_FAILED`, `COMPILER_UNAVAILABLE`, `PATCH_FAILED`
 - **4 new Recaf service injections** — AssemblerPipelineManager, JavacCompiler, PatchProvider, PatchApplier
-- Tool count: 16 → 25
+- Tool count: 16 → 26
 
 ### v1.1.0
 

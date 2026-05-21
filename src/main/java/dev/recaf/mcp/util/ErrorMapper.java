@@ -23,6 +23,9 @@ public final class ErrorMapper {
 	public static final String COMPILE_FAILED = "COMPILE_FAILED";
 	public static final String COMPILER_UNAVAILABLE = "COMPILER_UNAVAILABLE";
 	public static final String PATCH_FAILED = "PATCH_FAILED";
+	public static final String EVAL_FAILED = "EVAL_FAILED";
+	public static final String EVAL_TIMEOUT = "EVAL_TIMEOUT";
+	public static final String SIMPLIFY_FAILED = "SIMPLIFY_FAILED";
 	public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
 
 	private ErrorMapper() {}

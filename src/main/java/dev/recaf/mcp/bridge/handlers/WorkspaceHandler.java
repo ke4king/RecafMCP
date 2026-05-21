@@ -51,7 +51,7 @@ public class WorkspaceHandler {
 	}
 
 	/**
-	 * POST /workspace/open  { "path": "/path/to/file.jar" }
+	 * POST /workspace/open  { "path": "/path/to/file.jar", "supportingPaths": ["/path/to/lib.jar"] }
 	 * Returns workspaceId for multi-workspace support.
 	 */
 	public void handleOpen(HttpExchange exchange) throws IOException {
@@ -67,7 +67,14 @@ public class WorkspaceHandler {
 		try {
 			Path path = Paths.get(filePath);
 			WorkspaceResource resource = resourceImporter.importResource(path);
-			Workspace workspace = new BasicWorkspace(resource);
+			List<WorkspaceResource> supportingResources = new ArrayList<>();
+			for (var el : JsonUtil.getArray(req, "supportingPaths")) {
+				String supportPath = el.getAsString();
+				if (supportPath == null || supportPath.isBlank()) continue;
+				supportingResources.add(resourceImporter.importResource(Paths.get(supportPath)));
+			}
+			Workspace workspace = supportingResources.isEmpty() ?
+					new BasicWorkspace(resource) : new BasicWorkspace(resource, supportingResources);
 			workspaceManager.setCurrent(workspace);
 
 			// Register in multi-workspace registry
@@ -78,6 +85,9 @@ public class WorkspaceHandler {
 			data.addProperty("workspaceId", workspaceId);
 			data.addProperty("path", filePath);
 			data.addProperty("classCount", classCount);
+			data.addProperty("jvmClassCount", countJvmClasses(workspace));
+			data.addProperty("androidClassCount", countAndroidClasses(workspace));
+			data.addProperty("supportingResources", supportingResources.size());
 			BridgeServer.sendJson(exchange, 200, JsonUtil.successResponse(data));
 			logger.info("[MCP] Opened workspace: {} ({} classes, id={})", filePath, classCount, workspaceId);
 		} catch (Exception e) {
@@ -140,6 +150,8 @@ public class WorkspaceHandler {
 
 		JsonObject data = new JsonObject();
 		data.addProperty("classCount", countClasses(workspace));
+		data.addProperty("jvmClassCount", countJvmClasses(workspace));
+		data.addProperty("androidClassCount", countAndroidClasses(workspace));
 		data.addProperty("fileCount", countFiles(workspace));
 
 		WorkspaceResource primary = workspace.getPrimaryResource();
@@ -169,24 +181,36 @@ public class WorkspaceHandler {
 
 		// Collect all matching class names first
 		List<String> allMatched = new ArrayList<>();
-		var primaryBundle = workspace.getPrimaryResource().getJvmClassBundle();
-		for (var classInfo : primaryBundle) {
+		String classKind = JsonUtil.getString(req, "classKind", "all").toLowerCase(Locale.ROOT);
+		List<JsonObject> allItems = new ArrayList<>();
+		workspace.classesStream().forEach(pathNode -> {
+			ClassInfo classInfo = pathNode.getValue();
 			String name = classInfo.getName();
 			if (filter != null && !filter.isBlank()) {
 				String normalizedFilter = filter.replace('.', '/');
-				if (!name.contains(normalizedFilter)) continue;
+				if (!name.contains(normalizedFilter)) return;
 			}
+			boolean isJvm = classInfo.isJvmClass();
+			boolean isAndroid = classInfo.isAndroidClass();
+			if ("jvm".equals(classKind) && !isJvm) return;
+			if ("android".equals(classKind) && !isAndroid) return;
+			JsonObject item = new JsonObject();
+			item.addProperty("name", name);
+			item.addProperty("classKind", isJvm ? "jvm" : "android");
+			allItems.add(item);
 			allMatched.add(name);
-		}
+		});
 
 		int totalMatched = allMatched.size();
 		// Apply pagination
 		int fromIndex = Math.min(offset, totalMatched);
 		int toIndex = Math.min(fromIndex + limit, totalMatched);
-		List<String> page = allMatched.subList(fromIndex, toIndex);
+		List<JsonObject> page = allItems.subList(fromIndex, toIndex);
 
 		JsonObject data = new JsonObject();
-		data.addProperty("totalClasses", primaryBundle.size());
+		data.addProperty("totalClasses", countClasses(workspace));
+		data.addProperty("jvmClassCount", countJvmClasses(workspace));
+		data.addProperty("androidClassCount", countAndroidClasses(workspace));
 		data.addProperty("totalMatched", totalMatched);
 		data.addProperty("offset", fromIndex);
 		data.addProperty("returnedCount", page.size());
@@ -217,7 +241,10 @@ public class WorkspaceHandler {
 		}
 
 		String normalizedName = className.replace('.', '/');
-		ClassPathNode classPath = workspace.findClass(normalizedName);
+		String classKind = JsonUtil.getString(req, "classKind", "all");
+		ClassPathNode classPath = "jvm".equalsIgnoreCase(classKind) ?
+				workspace.findJvmClass(normalizedName) :
+				("android".equalsIgnoreCase(classKind) ? workspace.findAndroidClass(normalizedName) : workspace.findClass(normalizedName));
 		if (classPath == null) {
 			BridgeServer.sendJson(exchange, 404, ErrorMapper.classNotFound(className));
 			return;
@@ -226,6 +253,7 @@ public class WorkspaceHandler {
 		ClassInfo classInfo = classPath.getValue();
 		JsonObject data = new JsonObject();
 		data.addProperty("name", classInfo.getName());
+		data.addProperty("classKind", classInfo.isJvmClass() ? "jvm" : "android");
 		data.addProperty("superName", classInfo.getSuperName());
 		data.addProperty("accessFlags", classInfo.getAccess());
 
@@ -304,6 +332,9 @@ public class WorkspaceHandler {
 			item.addProperty("workspaceId", id);
 			item.addProperty("path", registry.getPath(id));
 			item.addProperty("classCount", countClasses(ws));
+			item.addProperty("jvmClassCount", countJvmClasses(ws));
+			item.addProperty("androidClassCount", countAndroidClasses(ws));
+			item.addProperty("supportingResources", ws.getSupportingResources().size());
 			item.addProperty("isCurrent", current != null && current == ws);
 			workspaces.add(item);
 		}
@@ -477,7 +508,23 @@ public class WorkspaceHandler {
 	}
 
 	private int countClasses(Workspace workspace) {
-		return workspace.getPrimaryResource().getJvmClassBundle().size();
+		return countJvmClasses(workspace) + countAndroidClasses(workspace);
+	}
+
+	private int countJvmClasses(Workspace workspace) {
+		int count = workspace.getPrimaryResource().getJvmClassBundle().size();
+		for (var bundle : workspace.getPrimaryResource().getVersionedJvmClassBundles().values()) {
+			count += bundle.size();
+		}
+		return count;
+	}
+
+	private int countAndroidClasses(Workspace workspace) {
+		int count = 0;
+		for (var bundle : workspace.getPrimaryResource().getAndroidClassBundles().values()) {
+			count += bundle.size();
+		}
+		return count;
 	}
 
 	private int countFiles(Workspace workspace) {

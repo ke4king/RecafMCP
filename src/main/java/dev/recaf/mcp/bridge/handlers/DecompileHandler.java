@@ -8,9 +8,12 @@ import dev.recaf.mcp.util.JsonUtil;
 import org.slf4j.Logger;
 import software.coley.recaf.analytics.logging.Logging;
 import software.coley.recaf.info.JvmClassInfo;
+import software.coley.recaf.info.AndroidClassInfo;
 import software.coley.recaf.path.ClassPathNode;
+import software.coley.recaf.services.decompile.AndroidDecompiler;
 import software.coley.recaf.services.decompile.DecompilerManager;
 import software.coley.recaf.services.decompile.DecompileResult;
+import software.coley.recaf.services.decompile.JvmDecompiler;
 import software.coley.recaf.services.workspace.WorkspaceManager;
 import software.coley.recaf.workspace.model.Workspace;
 
@@ -45,6 +48,8 @@ public class DecompileHandler {
 		String body = BridgeServer.readBody(exchange);
 		JsonObject req = JsonUtil.parseObject(body);
 		String className = JsonUtil.getString(req, "className", null);
+		String classKind = JsonUtil.getString(req, "classKind", "auto");
+		String decompilerName = JsonUtil.getString(req, "decompiler", null);
 
 		if (className == null || className.isBlank()) {
 			BridgeServer.sendJson(exchange, 400, ErrorMapper.missingParam("className"));
@@ -52,25 +57,58 @@ public class DecompileHandler {
 		}
 
 		String normalizedName = className.replace('.', '/');
-		ClassPathNode classPath = workspace.findJvmClass(normalizedName);
+		ClassPathNode classPath;
+		if ("jvm".equalsIgnoreCase(classKind)) {
+			classPath = workspace.findJvmClass(normalizedName);
+		} else if ("android".equalsIgnoreCase(classKind)) {
+			classPath = workspace.findAndroidClass(normalizedName);
+		} else {
+			classPath = workspace.findClass(normalizedName);
+		}
 		if (classPath == null) {
 			BridgeServer.sendJson(exchange, 404, ErrorMapper.classNotFound(className));
 			return;
 		}
 
-		JvmClassInfo classInfo = classPath.getValue().asJvmClass();
+		var classInfo = classPath.getValue();
 		logger.info("[MCP] Decompiling class: {}", normalizedName);
 
 		try {
-			DecompileResult result = decompilerManager.decompile(workspace, classInfo)
-					.get(30, TimeUnit.SECONDS);
+			DecompileResult result;
+			String decompilerUsed;
+			if (classInfo.isJvmClass()) {
+				JvmClassInfo jvmClassInfo = classInfo.asJvmClass();
+				JvmDecompiler target = decompilerName == null ? decompilerManager.getTargetJvmDecompiler() : decompilerManager.getJvmDecompiler(decompilerName);
+				if (target == null) {
+					BridgeServer.sendJson(exchange, 400, ErrorMapper.errorResponse(
+							ErrorMapper.INVALID_PARAMS,
+							"Unknown JVM decompiler: " + decompilerName,
+							"Call decompile_class without 'decompiler' or use a valid JVM decompiler name."));
+					return;
+				}
+				result = decompilerManager.decompile(target, workspace, jvmClassInfo).get(30, TimeUnit.SECONDS);
+				decompilerUsed = target.getName();
+			} else {
+				AndroidClassInfo androidClassInfo = classInfo.asAndroidClass();
+				AndroidDecompiler target = decompilerName == null ? decompilerManager.getTargetAndroidDecompiler() : decompilerManager.getAndroidDecompiler(decompilerName);
+				if (target == null) {
+					BridgeServer.sendJson(exchange, 400, ErrorMapper.errorResponse(
+							ErrorMapper.INVALID_PARAMS,
+							"Unknown Android decompiler: " + decompilerName,
+							"Call decompile_class without 'decompiler' or use a valid Android decompiler name."));
+					return;
+				}
+				result = decompilerManager.decompile(target, workspace, androidClassInfo).get(30, TimeUnit.SECONDS);
+				decompilerUsed = target.getName();
+			}
 
 			JsonObject data = new JsonObject();
 			data.addProperty("className", classInfo.getName());
+			data.addProperty("classKind", classInfo.isJvmClass() ? "jvm" : "android");
 
 			if (result.getText() != null) {
 				data.addProperty("source", result.getText());
-				data.addProperty("decompiler", decompilerManager.getTargetJvmDecompiler().getName());
+				data.addProperty("decompiler", decompilerUsed);
 			} else {
 				data.addProperty("source", "// Decompilation failed - no output");
 				if (result.getException() != null) {
