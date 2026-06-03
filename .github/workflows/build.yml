@@ -43,11 +43,11 @@ jobs:
           git checkout d07958a5c7
           git rev-parse HEAD
 
-      - name: Build Recaf snapshot jar only
+      - name: Build Recaf snapshot with JavaFX
         working-directory: Recaf
         run: |
           chmod +x ./gradlew
-          ./gradlew assemble -x test -x compileTestJava -Dskip_jfx_bundle=true --no-daemon
+          ./gradlew assemble -x test -x compileTestJava --no-daemon
 
       - name: Collect bundle
         run: |
@@ -56,6 +56,8 @@ jobs:
           cp build/libs/recaf-mcp-plugin-*.jar dist/plugins/
           cp build/mcp/recaf-mcp-server-*.jar dist/mcp/
           cp Recaf/recaf-ui/build/libs/recaf-ui-*-all.jar dist/recaf/
+
+          jar tf dist/recaf/recaf-ui-*-all.jar | grep 'com/sun/javafx/runtime/VersionInfo.class'
 
           cat > dist/run-recaf.sh <<'EOF'
           #!/usr/bin/env bash
