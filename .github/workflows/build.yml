@@ -30,12 +30,18 @@ jobs:
           chmod +x ./gradlew
           ./gradlew clean build --no-daemon
 
-      - name: Checkout Recaf snapshot d07958a5c7
+      - name: Checkout Recaf repository
         uses: actions/checkout@v4
         with:
           repository: Col-E/Recaf
-          ref: d07958a5c7
           path: Recaf
+          fetch-depth: 0
+
+      - name: Checkout Recaf snapshot d07958a5c7
+        working-directory: Recaf
+        run: |
+          git checkout d07958a5c7
+          git rev-parse HEAD
 
       - name: Build Recaf snapshot
         working-directory: Recaf
