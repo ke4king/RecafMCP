@@ -1,4 +1,4 @@
-name: Build
+name: Build RecafMCP Bundle
 
 on:
   workflow_dispatch:
@@ -6,35 +6,62 @@ on:
     branches:
       - master
       - main
-  pull_request:
-    branches:
-      - master
-      - main
+
+permissions:
+  contents: read
 
 jobs:
   build:
-    name: Build JARs
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout RecafMCP
         uses: actions/checkout@v4
 
-      - name: Set up JDK 22
+      - name: Setup JDK 22
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '22'
           cache: gradle
 
-      - name: Build
-        run: ./gradlew --no-daemon clean build
+      - name: Build RecafMCP
+        run: |
+          chmod +x ./gradlew
+          ./gradlew clean build --no-daemon
 
-      - name: Upload JAR artifacts
+      - name: Checkout Recaf snapshot d07958a5c7
+        uses: actions/checkout@v4
+        with:
+          repository: Col-E/Recaf
+          ref: d07958a5c7
+          path: Recaf
+
+      - name: Build Recaf snapshot
+        working-directory: Recaf
+        run: |
+          chmod +x ./gradlew
+          ./gradlew clean build --no-daemon
+
+      - name: Collect bundle
+        run: |
+          mkdir -p dist/plugins dist/mcp dist/recaf
+
+          cp build/libs/recaf-mcp-plugin-*.jar dist/plugins/
+          cp build/mcp/recaf-mcp-server-*.jar dist/mcp/
+          cp Recaf/recaf-ui/build/libs/*-all.jar dist/recaf/
+
+          cat > dist/run-recaf.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          java -jar "$DIR"/recaf/recaf-ui-*-all.jar -r "$DIR/plugins"
+          EOF
+
+          chmod +x dist/run-recaf.sh
+
+      - name: Upload bundle
         uses: actions/upload-artifact@v4
         with:
-          name: recaf-mcp-jars
-          if-no-files-found: error
-          path: |
-            build/libs/recaf-mcp-plugin-*.jar
-            build/mcp/recaf-mcp-server-*.jar
+          name: recaf-mcp-bundle-macos
+          path: dist/
